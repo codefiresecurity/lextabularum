@@ -356,7 +356,8 @@ async def record_result(project_id: int, run_case_id: int, body: ResultIn, user:
             token = decrypt_secret(project.gitlab_token_encrypted)
             if not project.gitlab_url or not project.gitlab_project_id or not token:
                 raise HTTPException(status.HTTP_409_CONFLICT, "Configure GitLab before recording failures")
-            client = GitLabClient(project.gitlab_url, project.gitlab_project_id, token)
+            client = GitLabClient(project.gitlab_url, project.gitlab_project_id, token,
+                                  verify_ssl=settings.gitlab_verify_ssl)
             links = []
             try:
                 for item in row.evidence:

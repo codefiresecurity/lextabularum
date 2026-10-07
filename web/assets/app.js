@@ -161,14 +161,14 @@ async function renderRun(runId) {
   const cases = run.cases.map(item => `<article class="case-card" data-run-case="${item.id}">
     <div class="case-summary" role="button" tabindex="0" aria-expanded="false"><strong class="mono">${escapeHtml(item.external_id)}</strong><span>${escapeHtml(item.title)}</span><span>${escapeHtml(item.assignee || 'Unassigned')}</span><span class="badge ${item.state}">${escapeHtml(item.state.replace('_',' '))}</span></div>
     <div class="case-detail hidden"><ol>${item.steps.map(step => `<li>${escapeHtml(step)}</li>`).join('')}</ol><p class="expected"><strong>Expected:</strong> ${escapeHtml(item.expected)}</p>
-      ${item.gitlab_issue_url ? `<p><a href="${escapeHtml(item.gitlab_issue_url)}" target="_blank" rel="noopener">Open GitLab issue ↗</a></p>` : ''}
+      <p class="issue-slot">${item.gitlab_issue_url ? `<a href="${escapeHtml(item.gitlab_issue_url)}" target="_blank" rel="noopener">Open GitLab issue ↗</a>` : ''}</p>
       ${canManage() ? `<form class="assignment-form form-grid"><label>Assignee<select name="assigned_to"><option value="">Unassigned</option>${members.filter(member => member.role !== 'viewer').map(member => `<option value="${member.id}" ${member.id === item.assigned_to ? 'selected' : ''}>${escapeHtml(member.display_name)}</option>`).join('')}</select></label><div><button type="submit">Update assignment</button></div></form>` : ''}
       <div class="run-tools">
-        <label>Result<select class="result-state"><option value="in_progress">In progress</option><option value="passed">Passed</option><option value="failed">Failed</option><option value="blocked">Blocked</option><option value="skipped">Skipped</option></select></label>
+        <label>Result<select class="result-state">${[['in_progress','In progress'],['passed','Passed'],['failed','Failed'],['blocked','Blocked'],['skipped','Skipped']].map(([value,label]) => `<option value="${value}" ${value === item.state ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
         <label>Execution notes<textarea class="result-notes" placeholder="Required when failed">${escapeHtml(item.notes)}</textarea></label>
         <button class="save-result primary">Save result</button>
       </div>
-      <form class="evidence-form stack"><label>Failure screenshot<input name="file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label><button type="submit">Upload evidence</button></form>
+      <form class="evidence-form stack"><label>Failure screenshot<input name="file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label><div class="actions"><button type="submit">Upload evidence</button><span class="inline-status" aria-live="polite"></span></div></form>
       <div class="evidence-list">${item.evidence.map(file => `<a href="/api/projects/${state.projectId}/evidence/${file.id}" target="_blank">${escapeHtml(file.name)}</a>`).join('<br>')}</div>
     </div></article>`).join('');
   setContent(pageHead(run.name, run.description, '<a href="#/runs"><button>Back to runs</button></a>') + (cases || '<div class="empty">This run is empty.</div>'), 'runs');
@@ -179,20 +179,44 @@ async function renderRun(runId) {
   $$('.evidence-form').forEach(form => form.onsubmit = async event => {
     event.preventDefault(); const card = event.target.closest('[data-run-case]'); const data = new FormData(form);
     if (!data.get('file')?.size) return toast('Choose a screenshot first.', true);
-    try { await api(`/projects/${state.projectId}/run-cases/${card.dataset.runCase}/evidence`, {method:'POST', body:data}); toast('Evidence uploaded.'); renderRun(runId); }
-    catch (error) { toast(error.message, true); }
+    const button = $('button[type="submit"]', form); const status = $('.inline-status', form);
+    button.disabled = true; button.textContent = 'Uploading…'; status.textContent = '';
+    try {
+      const uploaded = await api(`/projects/${state.projectId}/run-cases/${card.dataset.runCase}/evidence`, {method:'POST', body:data});
+      const link = document.createElement('a');
+      link.href = `/api/projects/${state.projectId}/evidence/${uploaded.id}`;
+      link.target = '_blank'; link.rel = 'noopener'; link.textContent = uploaded.name;
+      const list = $('.evidence-list', card);
+      if (list.childElementCount) list.append(document.createElement('br'));
+      list.append(link); form.reset(); status.textContent = 'Uploaded'; toast('Evidence uploaded. Your notes were preserved.');
+    } catch (error) { status.textContent = 'Upload failed'; toast(error.message, true); }
+    finally { button.disabled = false; button.textContent = 'Upload evidence'; }
   });
   $$('.assignment-form').forEach(form => form.onsubmit = async event => {
     event.preventDefault(); const card = form.closest('[data-run-case]');
-    try { await api(`/projects/${state.projectId}/run-cases/${card.dataset.runCase}/assignment`, {method:'PATCH', body:JSON.stringify({assigned_to:form.assigned_to.value ? Number(form.assigned_to.value) : null})}); toast('Assignment updated.'); renderRun(runId); }
+    try {
+      await api(`/projects/${state.projectId}/run-cases/${card.dataset.runCase}/assignment`, {method:'PATCH', body:JSON.stringify({assigned_to:form.assigned_to.value ? Number(form.assigned_to.value) : null})});
+      const label = form.assigned_to.selectedOptions[0]?.textContent || 'Unassigned';
+      $('.case-summary', card).children[2].textContent = label; toast('Assignment updated.');
+    }
     catch (error) { toast(error.message, true); }
   });
   $$('.save-result').forEach(button => button.onclick = async () => {
     const card = button.closest('[data-run-case]'); const resultState = $('.result-state', card).value; const notes = $('.result-notes', card).value;
     if (resultState === 'failed' && !notes.trim()) return toast('Describe what went wrong before failing the case.', true);
     button.disabled = true; button.textContent = resultState === 'failed' ? 'Opening GitLab issue…' : 'Saving…';
-    try { const result = await api(`/projects/${state.projectId}/run-cases/${card.dataset.runCase}/result`, {method:'PATCH', body:JSON.stringify({state:resultState, notes})}); toast(result.gitlab_issue_url ? 'Failure saved and GitLab issue opened.' : 'Result saved.'); renderRun(runId); }
-    catch (error) { toast(error.message, true); button.disabled = false; button.textContent = 'Save result'; }
+    try {
+      const result = await api(`/projects/${state.projectId}/run-cases/${card.dataset.runCase}/result`, {method:'PATCH', body:JSON.stringify({state:resultState, notes})});
+      const badge = $('.case-summary .badge', card); badge.className = `badge ${result.state}`; badge.textContent = result.state.replaceAll('_', ' ');
+      if (result.gitlab_issue_url) {
+        const link = document.createElement('a'); link.href = result.gitlab_issue_url;
+        link.target = '_blank'; link.rel = 'noopener'; link.textContent = 'Open GitLab issue ↗';
+        $('.issue-slot', card).replaceChildren(link);
+      }
+      toast(result.gitlab_issue_url ? 'Failure saved and GitLab issue opened.' : 'Result saved.');
+    }
+    catch (error) { toast(error.message, true); }
+    finally { button.disabled = false; button.textContent = 'Save result'; }
   });
 }
 

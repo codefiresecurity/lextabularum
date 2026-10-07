@@ -11,6 +11,7 @@
 - [x] Run assignment and result states
 - [x] Mandatory notes and image evidence for failures
 - [x] Immediate GitLab upload and issue creation
+- [x] Preserve an open execution card and unsaved notes while uploading evidence
 - [x] Responsive framework-free operator interface
 - [x] Audit records for key mutations
 - [ ] Exercise the full flow against the target MariaDB and local GitLab installation
@@ -38,4 +39,3 @@
 - [ ] CSV/PDF reports and export
 - [ ] GitLab webhook reconciliation for issue status
 - [ ] Optional GitLab sign-in
-

@@ -18,6 +18,8 @@ FLUSH PRIVILEGES;
 
 Create a virtual environment, install dependencies, and create `.env` from `.env.example`. Generate a long random `APP_SECRET` and do not rotate it without first replacing stored GitLab tokens.
 
+`GITLAB_VERIFY_SSL=false` permits a local GitLab instance with a self-signed or otherwise invalid certificate. This disables certificate validation for GitLab API traffic. Prefer installing the internal certificate authority on the application host and setting this value to `true` when possible.
+
 The evidence directory must be writable by the API service account and must not be inside the Nginx document root. Only the authenticated evidence API route should serve its files.
 
 Initialize the schema and first administrator:

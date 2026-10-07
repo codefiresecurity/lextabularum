@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     session_hours: int = 12
     evidence_dir: Path = Path("./storage/evidence")
     max_upload_bytes: int = 10 * 1024 * 1024
+    gitlab_verify_ssl: bool = False
 
 
 settings = Settings()
-
