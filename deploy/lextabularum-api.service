@@ -1,0 +1,21 @@
+[Unit]
+Description=Lex Tabularum API
+After=network.target mariadb.service
+
+[Service]
+Type=simple
+User=lextabularum
+Group=lextabularum
+WorkingDirectory=/opt/lextabularum
+EnvironmentFile=/opt/lextabularum/.env
+ExecStart=/opt/lextabularum/.venv/bin/uvicorn api.app.main:app --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=on-failure
+RestartSec=3
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/lextabularum/storage/evidence
+
+[Install]
+WantedBy=multi-user.target
