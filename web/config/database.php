@@ -4,7 +4,7 @@
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'lex_tabularum');
 define('DB_USER', 'lex_user');
-define('DB_PASS', 'your_password');
+define('DB_PASS', 'password123');
 define('DB_CHARSET', 'utf8mb4');
 
 function getPDO(): PDO
