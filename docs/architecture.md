@@ -43,3 +43,7 @@ PHP intentionally contains no domain or database logic. It supplies the hardened
 ## API discovery
 
 When enabled internally, interactive OpenAPI documentation is available at `/api/docs`. Nginx may restrict that route to administrators or an internal subnet.
+
+## Reporting
+
+The project dashboard calculates completion, decisive pass rate, current execution-state distribution, attention queues, recent-run health, and tester workload directly from pinned run cases. The Reports workspace can filter execution rows by run and state, search the current result set, print a clean report, and export CSV. A failed execution links back to its GitLab issue from the report.

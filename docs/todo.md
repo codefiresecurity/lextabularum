@@ -13,6 +13,8 @@
 - [x] Immediate GitLab upload and issue creation
 - [x] Preserve an open execution card and unsaved notes while uploading evidence
 - [x] Responsive framework-free operator interface
+- [x] Operational dashboard with completion, pass rate, queue, run, and workload widgets
+- [x] Filterable execution reporting with print and CSV export
 - [x] Audit records for key mutations
 - [ ] Exercise the full flow against the target MariaDB and local GitLab installation
 - [ ] Add migration tooling before the first production upgrade

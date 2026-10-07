@@ -395,5 +395,87 @@ async def dashboard(project_id: int, user: User = Depends(current_user), db: DBS
     case_count = db.scalar(select(func.count()).select_from(TestCase).where(TestCase.project_id == project_id, TestCase.active.is_(True)))
     open_runs = db.scalar(select(func.count()).select_from(TestRun).where(TestRun.project_id == project_id, TestRun.status == "open"))
     state_rows = db.execute(select(RunCase.state, func.count()).join(TestRun).where(TestRun.project_id == project_id).group_by(RunCase.state)).all()
+    states = {state.value: count for state, count in state_rows}
+    recent = []
+    runs = db.scalars(select(TestRun).where(TestRun.project_id == project_id).order_by(TestRun.created_at.desc()).limit(6)).all()
+    for run in runs:
+        counts = dict(db.execute(select(RunCase.state, func.count()).where(RunCase.run_id == run.id).group_by(RunCase.state)).all())
+        total = sum(counts.values())
+        terminal = sum(counts.get(state, 0) for state in (RunState.passed, RunState.failed, RunState.blocked, RunState.skipped))
+        decisive = counts.get(RunState.passed, 0) + counts.get(RunState.failed, 0)
+        recent.append({
+            "id": run.id, "name": run.name, "status": run.status, "created_at": run.created_at,
+            "total": total, "completed": terminal, "passed": counts.get(RunState.passed, 0),
+            "failed": counts.get(RunState.failed, 0),
+            "completion_rate": round(terminal / total * 100) if total else 0,
+            "pass_rate": round(counts.get(RunState.passed, 0) / decisive * 100) if decisive else None,
+        })
+    workload_rows = db.execute(
+        select(User.id, User.display_name, RunCase.state, func.count())
+        .join(RunCase, RunCase.assigned_to == User.id)
+        .join(TestRun, TestRun.id == RunCase.run_id)
+        .where(TestRun.project_id == project_id)
+        .group_by(User.id, User.display_name, RunCase.state)
+        .order_by(User.display_name)
+    ).all()
+    workload = {}
+    for user_id, display_name, state, count in workload_rows:
+        entry = workload.setdefault(user_id, {"user_id": user_id, "display_name": display_name, "total": 0, "states": {}})
+        entry["states"][state.value] = count
+        entry["total"] += count
+    unassigned = db.scalar(
+        select(func.count()).select_from(RunCase).join(TestRun)
+        .where(TestRun.project_id == project_id, RunCase.assigned_to.is_(None))
+    )
+    decisive = states.get("passed", 0) + states.get("failed", 0)
+    terminal = sum(states.get(state.value, 0) for state in (RunState.passed, RunState.failed, RunState.blocked, RunState.skipped))
+    total = sum(states.values())
     return {"case_count": case_count, "open_runs": open_runs,
-            "states": {state.value: count for state, count in state_rows}}
+            "states": states, "total_executions": total, "unassigned": unassigned,
+            "completion_rate": round(terminal / total * 100) if total else 0,
+            "pass_rate": round(states.get("passed", 0) / decisive * 100) if decisive else None,
+            "recent_runs": recent, "workload": list(workload.values())}
+
+
+@app.get("/api/projects/{project_id}/reports/executions")
+async def execution_report(
+    project_id: int,
+    run_id: int | None = None,
+    state: RunState | None = None,
+    user: User = Depends(current_user),
+    db: DBSession = Depends(get_db),
+):
+    require_project(project_id, user, db)
+    query = (
+        select(RunCase, TestRun, TestCaseVersion, User)
+        .join(TestRun, TestRun.id == RunCase.run_id)
+        .join(TestCaseVersion, TestCaseVersion.id == RunCase.test_case_version_id)
+        .outerjoin(User, User.id == RunCase.assigned_to)
+        .where(TestRun.project_id == project_id)
+        .order_by(TestRun.created_at.desc(), RunCase.id)
+    )
+    if run_id is not None:
+        query = query.where(TestRun.id == run_id)
+    if state is not None:
+        query = query.where(RunCase.state == state)
+    rows = []
+    counts = {item.value: 0 for item in RunState}
+    for run_case, run, version, assignee in db.execute(query).all():
+        counts[run_case.state.value] += 1
+        rows.append({
+            "run_id": run.id, "run_name": run.name, "run_status": run.status,
+            "case_id": run_case.case.external_id, "title": version.title,
+            "section": version.section, "priority": version.priority,
+            "assignee": assignee.display_name if assignee else None,
+            "state": run_case.state.value, "notes": run_case.notes,
+            "gitlab_issue_url": run_case.gitlab_issue_url,
+            "started_at": run_case.started_at, "completed_at": run_case.completed_at,
+        })
+    terminal = sum(counts[item.value] for item in (RunState.passed, RunState.failed, RunState.blocked, RunState.skipped))
+    decisive = counts[RunState.passed.value] + counts[RunState.failed.value]
+    return {
+        "total": len(rows), "counts": counts,
+        "completion_rate": round(terminal / len(rows) * 100) if rows else 0,
+        "pass_rate": round(counts[RunState.passed.value] / decisive * 100) if decisive else None,
+        "rows": rows,
+    }

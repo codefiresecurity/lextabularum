@@ -33,19 +33,34 @@ header('Referrer-Policy: same-origin');
   <div id="app-view" class="app-shell hidden">
     <header class="topbar">
       <button id="menu-toggle" class="icon-button mobile-only" aria-label="Toggle navigation">☰</button>
-      <a class="wordmark" href="#/">LEX TABULARUM <span>/ QA CONTROL</span></a>
+      <a class="product-lockup" href="#/dashboard">
+        <span class="product-kicker">QUALITY OPERATIONS PLATFORM</span>
+        <span class="wordmark">Lex Tabularum</span>
+      </a>
       <div class="topbar-right">
-        <label class="project-picker"><span>PROJECT</span><select id="project-select"></select></label>
-        <span id="current-user"></span>
-        <button id="logout-button" class="quiet">Sign out</button>
+        <div class="system-health"><span class="status-dot"></span><span>System online</span></div>
+        <div class="user-block"><span>USER</span><strong id="current-user"></strong></div>
+        <button id="logout-button" class="utility-button">LOG OUT</button>
       </div>
     </header>
+    <div class="modulebar">
+      <label class="project-picker"><span>WORKSPACE</span><select id="project-select"></select></label>
+      <nav class="module-tabs" aria-label="Workspace modules">
+        <a href="#/dashboard" data-route="dashboard">Dashboard</a>
+        <a href="#/cases" data-route="cases">Test Library</a>
+        <a href="#/runs" data-route="runs">Execution</a>
+        <a href="#/reports" data-route="reports">Reports</a>
+      </nav>
+    </div>
     <div class="workbench">
       <aside id="sidebar" class="sidebar">
         <nav aria-label="Main navigation">
+          <p class="nav-section">PROJECT OPERATIONS</p>
           <a href="#/dashboard" data-route="dashboard"><span>▦</span> Overview</a>
           <a href="#/cases" data-route="cases"><span>≡</span> Test library</a>
           <a href="#/runs" data-route="runs"><span>▶</span> Test runs</a>
+          <a href="#/reports" data-route="reports"><span>▤</span> Reports</a>
+          <p class="nav-section">CONFIGURATION</p>
           <a href="#/import" data-route="import"><span>⇧</span> Import</a>
           <a href="#/team" data-route="team"><span>◎</span> Project team</a>
           <a href="#/admin" data-route="admin" id="admin-nav"><span>⚙</span> Administration</a>

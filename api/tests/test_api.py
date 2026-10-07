@@ -43,6 +43,7 @@ def test_authenticated_import_and_run_workflow(monkeypatch):
             })
             assert login.status_code == 200
             headers = {"X-CSRF-Token": login.json()["csrf_token"]}
+            admin_id = login.json()["user"]["id"]
 
             project = await client.post("/api/projects", headers=headers, json={
                 "key": "SAMPLE", "name": "Sample project", "description": "",
@@ -61,7 +62,7 @@ def test_authenticated_import_and_run_workflow(monkeypatch):
             assert imported.json()["created"] == 1
 
             run = await client.post(f"/api/projects/{project_id}/runs", headers=headers, json={
-                "name": "Release acceptance", "description": "", "case_ids": [],
+                "name": "Release acceptance", "description": "", "case_ids": [], "assigned_to": admin_id,
             })
             assert run.status_code == 201
             detail = await client.get(f"/api/projects/{project_id}/runs/{run.json()['id']}")
@@ -89,6 +90,16 @@ def test_authenticated_import_and_run_workflow(monkeypatch):
             )
             assert failed.status_code == 200
             assert failed.json()["gitlab_issue_url"] == "https://gitlab.internal/group/sample/-/issues/17"
+
+            dashboard = await client.get(f"/api/projects/{project_id}/dashboard")
+            assert dashboard.status_code == 200
+            assert dashboard.json()["recent_runs"][0]["failed"] == 1
+            assert dashboard.json()["workload"][0]["display_name"] == "Administrator"
+
+            report = await client.get(f"/api/projects/{project_id}/reports/executions?state=failed")
+            assert report.status_code == 200
+            assert report.json()["total"] == 1
+            assert report.json()["rows"][0]["case_id"] == "AC-001"
 
     monkeypatch.setattr(GitLabClient, "upload", lambda *args: {"markdown": "![failure](/uploads/failure.png)"})
     monkeypatch.setattr(GitLabClient, "create_issue", lambda *args: {

@@ -69,8 +69,13 @@ function pageHead(title, subtitle = '', actions = '') {
 }
 
 function activeNav(routeName) {
-  $$('.sidebar a').forEach(link => link.classList.toggle('active', link.dataset.route === routeName));
+  $$('[data-route]').forEach(link => link.classList.toggle('active', link.dataset.route === routeName));
   $('#sidebar').classList.remove('open');
+}
+
+function formatDate(value) {
+  if (!value) return '—';
+  return new Intl.DateTimeFormat(undefined, {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(value));
 }
 
 function setContent(html, routeName) {
@@ -82,18 +87,68 @@ function setContent(html, routeName) {
 async function renderDashboard() {
   if (!projectRequired()) return;
   const data = await api(`/projects/${state.projectId}/dashboard`);
-  const done = (data.states.passed || 0) + (data.states.failed || 0) + (data.states.blocked || 0) + (data.states.skipped || 0);
-  const total = Object.values(data.states).reduce((a, b) => a + b, 0);
-  const rate = total ? Math.round(done / total * 100) : 0;
-  setContent(pageHead('Operations overview', 'Current testing posture across the selected project.') + `
+  const total = data.total_executions || 0;
+  const width = value => total ? value / total * 100 : 0;
+  const recentRows = data.recent_runs.map(run => `<tr><td><a class="panel-link" href="#/runs/${run.id}">${escapeHtml(run.name)}</a><br><small class="muted">${formatDate(run.created_at)}</small></td><td>${run.total}</td><td><div class="mini-meter"><div class="progress"><span style="width:${run.completion_rate}%"></span></div><small>${run.completed}/${run.total} complete</small></div></td><td>${run.pass_rate === null ? '—' : `${run.pass_rate}%`}</td><td><span class="badge ${run.failed ? 'failed' : ''}">${run.failed} failed</span></td></tr>`).join('');
+  const workloadRows = data.workload.slice(0, 8).map(item => `<tr><td>${escapeHtml(item.display_name)}</td><td>${item.total}</td><td>${item.states.not_started || 0}</td><td>${item.states.in_progress || 0}</td><td>${item.states.failed || 0}</td></tr>`).join('');
+  setContent(pageHead('Operations dashboard', 'Live execution posture for the selected project.', '<a href="#/reports"><button>Open reports</button></a>') + `
     <section class="grid">
-      <div class="metric span-3"><span>Test cases</span><strong>${data.case_count}</strong></div>
-      <div class="metric span-3"><span>Open runs</span><strong>${data.open_runs}</strong></div>
-      <div class="metric span-3"><span>Passed executions</span><strong>${data.states.passed || 0}</strong></div>
-      <div class="metric span-3"><span>Open failures</span><strong>${data.states.failed || 0}</strong></div>
-      <div class="panel span-8"><h2>Execution completion</h2><div class="progress"><span style="width:${rate}%"></span></div><p><strong>${rate}%</strong> terminal results across all runs</p></div>
-      <div class="panel span-4"><h2>Queue</h2><p><span class="badge">${data.states.not_started || 0} waiting</span></p><p><span class="badge in_progress">${data.states.in_progress || 0} in progress</span></p></div>
+      <div class="metric span-3"><span>Case library</span><strong>${data.case_count}</strong><p class="widget-note">Reusable test definitions</p></div>
+      <div class="metric span-3"><span>Open runs</span><strong>${data.open_runs}</strong><p class="widget-note">Active execution sets</p></div>
+      <div class="metric good span-3"><span>Completion rate</span><strong>${data.completion_rate}%</strong><p class="widget-note">${total} total executions</p></div>
+      <div class="metric ${data.states.failed ? 'bad' : 'good'} span-3"><span>Pass rate</span><strong>${data.pass_rate === null ? '—' : `${data.pass_rate}%`}</strong><p class="widget-note">${data.states.failed || 0} recorded failures</p></div>
+      <div class="panel span-8"><h2>Execution state distribution</h2>
+        <div class="state-distribution" title="Execution status distribution">
+          <span class="passed" style="width:${width(data.states.passed || 0)}%"></span><span class="failed" style="width:${width(data.states.failed || 0)}%"></span><span class="blocked" style="width:${width(data.states.blocked || 0)}%"></span><span class="in-progress" style="width:${width(data.states.in_progress || 0)}%"></span><span class="waiting" style="width:${width(data.states.not_started || 0)}%"></span><span class="skipped" style="width:${width(data.states.skipped || 0)}%"></span>
+        </div>
+        <div class="state-legend"><span class="legend-key" style="--key-color:#3a9160">Passed ${data.states.passed || 0}</span><span class="legend-key" style="--key-color:#b64b42">Failed ${data.states.failed || 0}</span><span class="legend-key" style="--key-color:#ce8b2d">Blocked ${data.states.blocked || 0}</span><span class="legend-key" style="--key-color:#3f78aa">In progress ${data.states.in_progress || 0}</span><span class="legend-key" style="--key-color:#aebbc4">Waiting ${data.states.not_started || 0}</span><span class="legend-key" style="--key-color:#7f8c94">Skipped ${data.states.skipped || 0}</span></div>
+      </div>
+      <div class="panel span-4"><h2>Attention queue</h2><table><tbody><tr><td>Unassigned cases</td><td><strong>${data.unassigned}</strong></td></tr><tr><td>Blocked</td><td><strong>${data.states.blocked || 0}</strong></td></tr><tr><td>In progress</td><td><strong>${data.states.in_progress || 0}</strong></td></tr><tr><td>Not started</td><td><strong>${data.states.not_started || 0}</strong></td></tr></tbody></table></div>
+      <div class="panel span-8"><h2>Recent test runs</h2>${recentRows ? `<div class="table-wrap"><table><thead><tr><th>Run</th><th>Total</th><th>Completion</th><th>Pass rate</th><th>Failures</th></tr></thead><tbody>${recentRows}</tbody></table></div>` : '<div class="empty">No test runs yet.</div>'}</div>
+      <div class="panel span-4"><h2>Tester workload</h2>${workloadRows ? `<div class="table-wrap"><table><thead><tr><th>Tester</th><th>Total</th><th>Queue</th><th>Active</th><th>Failed</th></tr></thead><tbody>${workloadRows}</tbody></table></div>` : '<div class="empty">No assigned executions.</div>'}</div>
     </section>`, 'dashboard');
+}
+
+async function renderReports() {
+  if (!projectRequired()) return;
+  const runs = await api(`/projects/${state.projectId}/runs`);
+  setContent(pageHead('Execution reports', 'Filter, review, print, or export test execution evidence.', '<button id="print-report">Print report</button><button id="export-report" class="primary">Export CSV</button>') + `
+    <form id="report-controls" class="report-controls">
+      <label>Test run<select name="run_id"><option value="">All runs</option>${runs.map(run => `<option value="${run.id}">${escapeHtml(run.name)}</option>`).join('')}</select></label>
+      <label>Result<select name="state"><option value="">All states</option><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="passed">Passed</option><option value="failed">Failed</option><option value="blocked">Blocked</option><option value="skipped">Skipped</option></select></label>
+      <label>Search current results<input name="search" type="search" placeholder="Case, title, module, tester…"></label>
+      <button type="submit">Apply filters</button>
+    </form>
+    <section id="report-summary" class="grid report-summary"></section>
+    <div id="report-results" class="table-wrap"></div>`, 'reports');
+
+  let report = null;
+  const paintRows = () => {
+    if (!report) return;
+    const search = $('#report-controls').search.value.trim().toLowerCase();
+    const rows = report.rows.filter(row => !search || [row.case_id, row.title, row.section, row.assignee, row.run_name, row.notes].some(value => String(value || '').toLowerCase().includes(search)));
+    $('#report-results').innerHTML = rows.length ? `<table class="report-table"><thead><tr><th>Run</th><th>Case</th><th>Title / module</th><th>Priority</th><th>Assignee</th><th>Result</th><th>Completed</th><th>Notes / issue</th></tr></thead><tbody>${rows.map(row => `<tr><td>${escapeHtml(row.run_name)}</td><td class="mono"><strong>${escapeHtml(row.case_id)}</strong></td><td>${escapeHtml(row.title)}<br><small class="muted">${escapeHtml(row.section)}</small></td><td>${escapeHtml(row.priority || '—')}</td><td>${escapeHtml(row.assignee || 'Unassigned')}</td><td><span class="badge ${row.state}">${escapeHtml(row.state.replaceAll('_',' '))}</span></td><td>${formatDate(row.completed_at)}</td><td class="notes-cell" title="${escapeHtml(row.notes || '')}">${escapeHtml(row.notes || '—')}${row.gitlab_issue_url ? `<br><a href="${escapeHtml(row.gitlab_issue_url)}" target="_blank" rel="noopener">GitLab issue ↗</a>` : ''}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No executions match these filters.</div>';
+  };
+  const loadReport = async () => {
+    const form = $('#report-controls'); const params = new URLSearchParams();
+    if (form.run_id.value) params.set('run_id', form.run_id.value);
+    if (form.state.value) params.set('state', form.state.value);
+    report = await api(`/projects/${state.projectId}/reports/executions?${params}`);
+    $('#report-summary').innerHTML = `<div class="metric span-3"><span>Executions</span><strong>${report.total}</strong></div><div class="metric good span-3"><span>Completion</span><strong>${report.completion_rate}%</strong></div><div class="metric good span-3"><span>Pass rate</span><strong>${report.pass_rate === null ? '—' : `${report.pass_rate}%`}</strong></div><div class="metric ${report.counts.failed ? 'bad' : 'good'} span-3"><span>Failures</span><strong>${report.counts.failed}</strong></div>`;
+    paintRows();
+  };
+  $('#report-controls').onsubmit = event => { event.preventDefault(); loadReport().catch(error => toast(error.message, true)); };
+  $('#report-controls').search.oninput = paintRows;
+  $('#print-report').onclick = () => window.print();
+  $('#export-report').onclick = () => {
+    if (!report) return;
+    const columns = ['Run','Case ID','Title','Module','Priority','Assignee','Result','Completed','Notes','GitLab issue'];
+    const quote = value => `"${String(value ?? '').replaceAll('"','""')}"`;
+    const csv = [columns, ...report.rows.map(row => [row.run_name,row.case_id,row.title,row.section,row.priority,row.assignee,row.state,row.completed_at,row.notes,row.gitlab_issue_url])].map(row => row.map(quote).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8'}));
+    const link = document.createElement('a'); link.href = url; link.download = `lex-tabularum-report-${new Date().toISOString().slice(0,10)}.csv`; link.click(); URL.revokeObjectURL(url);
+  };
+  await loadReport();
 }
 
 async function renderCases() {
@@ -251,6 +306,7 @@ async function route() {
     else if (name === 'import') await renderImport();
     else if (name === 'runs' && parts[1]) await renderRun(Number(parts[1]));
     else if (name === 'runs') await renderRuns();
+    else if (name === 'reports') await renderReports();
     else if (name === 'team') await renderTeam();
     else if (name === 'admin') await renderAdmin();
     else location.hash = '#/dashboard';
