@@ -29,6 +29,54 @@ function toast(message, error = false) {
   toast.timer = setTimeout(() => node.classList.add('hidden'), 4500);
 }
 
+function modalField(field) {
+  if (field.type === 'checkboxes') {
+    return `<fieldset class="modal-checks"><legend>${escapeHtml(field.label)}</legend>${field.help ? `<p class="field-help">${escapeHtml(field.help)}</p>` : ''}<div class="check-list">${field.options.map(option => `<label><input type="checkbox" name="${escapeHtml(field.name)}" value="${escapeHtml(option.value)}" ${option.checked ? 'checked' : ''}><span><strong>${escapeHtml(option.label)}</strong>${option.description ? `<small>${escapeHtml(option.description)}</small>` : ''}</span></label>`).join('') || '<p class="muted">No options are available.</p>'}</div></fieldset>`;
+  }
+  const attributes = `${field.required ? ' required' : ''}${field.minlength ? ` minlength="${field.minlength}"` : ''}${field.maxlength ? ` maxlength="${field.maxlength}"` : ''}${field.autocomplete ? ` autocomplete="${escapeHtml(field.autocomplete)}"` : ''}`;
+  const control = field.type === 'textarea'
+    ? `<textarea name="${escapeHtml(field.name)}" rows="${field.rows || 4}"${attributes}>${escapeHtml(field.value || '')}</textarea>`
+    : `<input name="${escapeHtml(field.name)}" type="${escapeHtml(field.type || 'text')}" value="${escapeHtml(field.value || '')}"${attributes}>`;
+  return `<label>${escapeHtml(field.label)}${control}${field.help ? `<small class="field-help">${escapeHtml(field.help)}</small>` : ''}</label>`;
+}
+
+function openModal({title, message = '', fields = [], confirmLabel = 'Save', danger = false, size = ''}) {
+  const dialog = $('#app-dialog');
+  const form = $('#dialog-form');
+  $('#dialog-title').textContent = title;
+  $('#dialog-body').innerHTML = `${message ? `<p class="dialog-message">${escapeHtml(message)}</p>` : ''}${fields.map(modalField).join('')}`;
+  const confirmButton = $('#dialog-confirm');
+  confirmButton.textContent = confirmLabel;
+  confirmButton.className = danger ? 'danger' : 'primary';
+  dialog.className = `app-dialog ${size ? `dialog-${size}` : ''}`.trim();
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = value => {
+      if (settled) return;
+      settled = true;
+      dialog.close();
+      resolve(value);
+    };
+    form.onsubmit = event => {
+      event.preventDefault();
+      if (!form.reportValidity()) return;
+      const data = new FormData(form);
+      const values = {};
+      fields.forEach(field => { values[field.name] = field.type === 'checkboxes' ? data.getAll(field.name) : String(data.get(field.name) || ''); });
+      finish(values);
+    };
+    $('#dialog-cancel').onclick = () => finish(null);
+    $('#dialog-close').onclick = () => finish(null);
+    dialog.oncancel = event => { event.preventDefault(); finish(null); };
+    dialog.showModal();
+    requestAnimationFrame(() => $('#dialog-body input:not([type="checkbox"]), #dialog-body textarea, #dialog-body select')?.focus());
+  });
+}
+
+async function confirmModal(title, message, confirmLabel = 'Continue', danger = false) {
+  return Boolean(await openModal({title, message, confirmLabel, danger}));
+}
+
 function showLogin() {
   state.user = null; state.csrf = null;
   $('#app-view').classList.add('hidden');
@@ -189,25 +237,34 @@ async function renderCases(filters = {}) {
     } catch (error) { toast(error.message, true); }
   });
   $$('.case-tags').forEach(button => button.onclick = async () => {
-    const value = window.prompt('Comma-separated tags:', button.dataset.tags);
-    if (value === null) return;
-    try { await api(`/projects/${state.projectId}/cases/${button.dataset.caseId}/tags`, {method:'PATCH', body:JSON.stringify({tags:value.split(',').map(tag => tag.trim()).filter(Boolean)})}); toast('Tags updated.'); renderCases(filters); }
+    const values = await openModal({title:'Edit case tags', message:'Use commas to separate tags.', fields:[{name:'tags', label:'Tags', value:button.dataset.tags, help:'Example: smoke, authentication, release-blocker'}]});
+    if (!values) return;
+    try { await api(`/projects/${state.projectId}/cases/${button.dataset.caseId}/tags`, {method:'PATCH', body:JSON.stringify({tags:values.tags.split(',').map(tag => tag.trim()).filter(Boolean)})}); toast('Tags updated.'); renderCases(filters); }
     catch (error) { toast(error.message, true); }
   });
   $$('.edit-case').forEach(button => button.onclick = async () => {
     try {
       const item = await api(`/projects/${state.projectId}/cases/${button.dataset.caseId}`);
-      const title = window.prompt('Title:', item.title); if (title === null) return;
-      const section = window.prompt('Module / section:', item.section); if (section === null) return;
-      const priority = window.prompt('Priority:', item.priority || ''); if (priority === null) return;
-      const steps = window.prompt('Steps, one per line:', item.steps.join('\n')); if (steps === null) return;
-      const expected = window.prompt('Expected result:', item.expected); if (expected === null) return;
-      await api(`/projects/${state.projectId}/cases/${button.dataset.caseId}`, {method:'PATCH', body:JSON.stringify({title, section, priority:priority || null, lifecycle:item.lifecycle || null, steps:steps.split('\n').map(step => step.trim()).filter(Boolean), expected})});
+      const values = await openModal({title:`Edit ${item.external_id}`, message:'Saving creates a new immutable revision. Existing runs keep their pinned revision.', size:'wide', fields:[
+        {name:'title', label:'Title', value:item.title, required:true, maxlength:300},
+        {name:'section', label:'Module / section', value:item.section, required:true, maxlength:300},
+        {name:'priority', label:'Priority', value:item.priority || '', maxlength:20},
+        {name:'steps', label:'Steps — one per line', value:item.steps.join('\n'), type:'textarea', rows:7, required:true},
+        {name:'expected', label:'Expected result', value:item.expected, type:'textarea', rows:4, required:true},
+      ], confirmLabel:'Create revision'});
+      if (!values) return;
+      await api(`/projects/${state.projectId}/cases/${button.dataset.caseId}`, {method:'PATCH', body:JSON.stringify({title:values.title, section:values.section, priority:values.priority || null, lifecycle:item.lifecycle || null, steps:values.steps.split('\n').map(step => step.trim()).filter(Boolean), expected:values.expected})});
       toast('A new test-case revision was created.'); renderCases(filters);
     } catch (error) { toast(error.message, true); }
   });
-  $$('.deactivate-case').forEach(button => button.onclick = async () => { if (!window.confirm(`Deactivate ${button.dataset.caseName}? Existing runs keep their pinned copy.`)) return; try { await api(`/projects/${state.projectId}/cases/${button.dataset.caseId}/deactivate`, {method:'POST'}); toast('Test case deactivated.'); renderCases(filters); } catch (error) { toast(error.message, true); } });
-  $$('.case-requirements').forEach(button => button.onclick = async () => { try { const [all,current] = await Promise.all([api(`/projects/${state.projectId}/requirements`),api(`/projects/${state.projectId}/cases/${button.dataset.caseId}/requirements`)]); const value = window.prompt(`Requirement keys (available: ${all.map(item => item.key).join(', ')}):`, current.map(item => item.key).join(',')); if (value === null) return; const keys = new Set(value.split(',').map(item => item.trim().toUpperCase()).filter(Boolean)); const selected = all.filter(item => keys.has(item.key)); if (selected.length !== keys.size) return toast('One or more requirement keys were not found.', true); await api(`/projects/${state.projectId}/cases/${button.dataset.caseId}/requirements`, {method:'PUT', body:JSON.stringify({requirement_ids:selected.map(item => item.id)})}); toast('Requirements mapped.'); } catch (error) { toast(error.message, true); } });
+  $$('.deactivate-case').forEach(button => button.onclick = async () => { if (!await confirmModal('Deactivate test case', `Deactivate ${button.dataset.caseName}? Existing runs will keep their pinned copy.`, 'Deactivate', true)) return; try { await api(`/projects/${state.projectId}/cases/${button.dataset.caseId}/deactivate`, {method:'POST'}); toast('Test case deactivated.'); renderCases(filters); } catch (error) { toast(error.message, true); } });
+  $$('.case-requirements').forEach(button => button.onclick = async () => { try {
+    const [all,current] = await Promise.all([api(`/projects/${state.projectId}/requirements`),api(`/projects/${state.projectId}/cases/${button.dataset.caseId}/requirements`)]);
+    const selectedIds = new Set(current.map(item => item.id));
+    const values = await openModal({title:'Map requirements', message:'Select every requirement covered by this test case.', size:'wide', fields:[{name:'requirements', label:'Available requirements', type:'checkboxes', options:all.map(item => ({value:item.id, label:`${item.key} — ${item.title}`, description:item.description, checked:selectedIds.has(item.id)}))}], confirmLabel:'Save mapping'});
+    if (!values) return;
+    await api(`/projects/${state.projectId}/cases/${button.dataset.caseId}/requirements`, {method:'PUT', body:JSON.stringify({requirement_ids:values.requirements.map(Number)})}); toast('Requirements mapped.');
+  } catch (error) { toast(error.message, true); } });
 }
 
 async function renderRequirements() {
@@ -271,7 +328,7 @@ async function renderRuns() {
   if ($('#new-run-button')) $('#new-run-button').onclick = () => $('#new-run-panel').classList.remove('hidden');
   $('#cancel-run').onclick = () => $('#new-run-panel').classList.add('hidden');
   $('#run-form').template_id.onchange = event => { const template = templates.find(item => item.id === Number(event.target.value)); [...$('#run-form').case_ids.options].forEach(option => option.selected = !template || template.case_ids.includes(Number(option.value))); };
-  $('#save-template').onclick = async () => { const form = $('#run-form'); const name = window.prompt('Template name:'); if (!name) return; try { await api(`/projects/${state.projectId}/run-templates`, {method:'POST', body:JSON.stringify({name, description:form.description.value, case_ids:[...form.case_ids.selectedOptions].map(option => Number(option.value))})}); toast('Run template saved.'); renderRuns(); } catch (error) { toast(error.message, true); } };
+  $('#save-template').onclick = async () => { const form = $('#run-form'); const values = await openModal({title:'Save run template', message:'The currently selected test cases will be saved for reuse.', fields:[{name:'name', label:'Template name', required:true, maxlength:240}]}); if (!values) return; try { await api(`/projects/${state.projectId}/run-templates`, {method:'POST', body:JSON.stringify({name:values.name, description:form.description.value, case_ids:[...form.case_ids.selectedOptions].map(option => Number(option.value))})}); toast('Run template saved.'); renderRuns(); } catch (error) { toast(error.message, true); } };
   $('#run-form').onsubmit = async event => {
     event.preventDefault(); const form = event.target;
     const payload = {name: form.name.value, description: form.description.value,
@@ -308,7 +365,7 @@ async function renderRun(runId) {
   const bulkBar = canManage() && run.status === 'open' ? `<form id="bulk-assignment" class="report-controls"><label>Bulk assignee<select name="assigned_to"><option value="">Unassigned</option>${members.filter(member => member.role !== 'viewer').map(member => `<option value="${member.id}">${escapeHtml(member.display_name)}</option>`).join('')}</select></label><button>Assign selected</button></form>` : '';
   setContent(pageHead(run.name, [run.description, runMeta].filter(Boolean).join(' — '), `<span class="badge">${escapeHtml(run.status)}</span>${lifecycle}<a href="#/runs"><button>Back to runs</button></a>`) + bulkBar + (cases || '<div class="empty">This run is empty.</div>'), 'runs');
   $$('.run-status').forEach(button => button.onclick = async () => {
-    if (!window.confirm(`Change this run to ${button.dataset.status}?`)) return;
+    if (!await confirmModal('Change run status', `Change this run to ${button.dataset.status}?`, 'Update status')) return;
     try { await api(`/projects/${state.projectId}/runs/${runId}/status`, {method:'PATCH', body:JSON.stringify({status:button.dataset.status})}); toast('Run status updated.'); renderRun(runId); }
     catch (error) { toast(error.message, true); }
   });
@@ -351,7 +408,7 @@ async function renderRun(runId) {
     if (!button) return;
     const item = button.closest('.evidence-item'); const card = button.closest('[data-run-case]');
     const name = $('a', item).textContent;
-    if (!window.confirm(`Remove ${name} from this test execution?`)) return;
+    if (!await confirmModal('Remove evidence', `Remove ${name} from this test execution?`, 'Remove evidence', true)) return;
     button.disabled = true; button.textContent = 'Removing…';
     try {
       const result = await api(`/projects/${state.projectId}/run-cases/${card.dataset.runCase}/evidence/${item.dataset.evidenceId}`, {method:'DELETE'});
@@ -390,7 +447,7 @@ async function renderRun(runId) {
   });
   $$('.start-retest').forEach(button => button.onclick = async () => {
     const card = button.closest('[data-run-case]');
-    if (!window.confirm('Start a new attempt for this test case? The previous result and evidence will remain in history.')) return;
+    if (!await confirmModal('Start retest', 'Start a new attempt? The previous result and evidence will remain in execution history.', 'Start retest')) return;
     button.disabled = true; button.textContent = 'Starting…';
     try {
       const result = await api(`/projects/${state.projectId}/run-cases/${card.dataset.runCase}/retest`, {method:'POST', body:JSON.stringify({lock_version:Number(card.dataset.lockVersion)})});
@@ -453,9 +510,10 @@ async function renderAdmin() {
   $('#user-form').onsubmit = async event => { event.preventDefault(); const form = event.target; try { await api('/users', {method:'POST', body:JSON.stringify({username:form.username.value, display_name:form.display_name.value, password:form.password.value, is_admin:form.is_admin.checked})}); toast('User created.'); renderAdmin(); } catch (error) { toast(error.message, true); } };
   $('#project-form').onsubmit = async event => { event.preventDefault(); const form = event.target; const value = name => form[name].value || null; try { await api('/projects', {method:'POST', body:JSON.stringify({key:value('key'), name:value('name'), description:value('description') || '', gitlab_url:value('gitlab_url'), gitlab_project_id:value('gitlab_project_id'), gitlab_token:value('gitlab_token')})}); toast('Project created.'); await loadProjects(); location.hash = '#/dashboard'; } catch (error) { toast(error.message, true); } };
   $$('.delete-project').forEach(button => button.onclick = async () => {
-    const confirmation = window.prompt(`This permanently deletes ${button.dataset.projectName} and all of its test data. Existing GitLab issues will remain.\n\nType ${button.dataset.projectKey} to confirm:`);
-    if (confirmation !== button.dataset.projectKey) {
-      if (confirmation !== null) toast('Project key did not match. Nothing was deleted.', true);
+    const values = await openModal({title:'Permanently delete project', message:`This deletes ${button.dataset.projectName}, its test library, runs, execution history, and local evidence. Existing GitLab issues remain.`, fields:[{name:'confirmation', label:`Type ${button.dataset.projectKey} to confirm`, required:true, autocomplete:'off'}], confirmLabel:'Delete project', danger:true});
+    if (!values) return;
+    if (values.confirmation !== button.dataset.projectKey) {
+      toast('Project key did not match. Nothing was deleted.', true);
       return;
     }
     button.disabled = true; button.textContent = 'Deleting…';
@@ -466,9 +524,9 @@ async function renderAdmin() {
       renderAdmin();
     } catch (error) { toast(error.message, true); button.disabled = false; button.textContent = 'Delete project…'; }
   });
-  $$('.archive-project').forEach(button => button.onclick = async () => { const archived = button.dataset.archived === 'true'; if (!window.confirm(`${archived ? 'Archive' : 'Restore'} this project?`)) return; try { await api(`/projects/${button.dataset.projectId}/archive`, {method:'POST', body:JSON.stringify({archived})}); await loadProjects(); toast(archived ? 'Project archived.' : 'Project restored.'); renderAdmin(); } catch (error) { toast(error.message, true); } });
-  $$('.reset-password').forEach(button => button.onclick = async () => { const password = window.prompt(`Enter a temporary password of at least 12 characters for ${button.dataset.userName}:`); if (password === null) return; try { await api(`/users/${button.dataset.userId}/reset-password`, {method:'POST', body:JSON.stringify({new_password:password})}); toast('Password reset. The user must change it at next sign-in.'); } catch (error) { toast(error.message, true); } });
-  $$('.revoke-sessions').forEach(button => button.onclick = async () => { if (!window.confirm('Sign this user out of every active session?')) return; try { const result = await api(`/users/${button.dataset.userId}/revoke-sessions`, {method:'POST'}); toast(`${result.revoked} sessions revoked.`); } catch (error) { toast(error.message, true); } });
+  $$('.archive-project').forEach(button => button.onclick = async () => { const archived = button.dataset.archived === 'true'; if (!await confirmModal(`${archived ? 'Archive' : 'Restore'} project`, `${archived ? 'Archive' : 'Restore'} this project?`, archived ? 'Archive' : 'Restore')) return; try { await api(`/projects/${button.dataset.projectId}/archive`, {method:'POST', body:JSON.stringify({archived})}); await loadProjects(); toast(archived ? 'Project archived.' : 'Project restored.'); renderAdmin(); } catch (error) { toast(error.message, true); } });
+  $$('.reset-password').forEach(button => button.onclick = async () => { const values = await openModal({title:'Reset password', message:`Set a temporary password for ${button.dataset.userName}. They will be required to change it after signing in.`, fields:[{name:'password', label:'Temporary password', type:'password', required:true, minlength:12, maxlength:200, autocomplete:'new-password'}], confirmLabel:'Reset password'}); if (!values) return; try { await api(`/users/${button.dataset.userId}/reset-password`, {method:'POST', body:JSON.stringify({new_password:values.password})}); toast('Password reset. The user must change it at next sign-in.'); } catch (error) { toast(error.message, true); } });
+  $$('.revoke-sessions').forEach(button => button.onclick = async () => { if (!await confirmModal('Revoke active sessions', 'Sign this user out of every active session?', 'Revoke sessions', true)) return; try { const result = await api(`/users/${button.dataset.userId}/revoke-sessions`, {method:'POST'}); toast(`${result.revoked} sessions revoked.`); } catch (error) { toast(error.message, true); } });
 }
 
 async function route() {

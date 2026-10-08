@@ -74,6 +74,19 @@ header('Referrer-Policy: same-origin');
       <main id="content" class="content" tabindex="-1"></main>
     </div>
     <div id="toast" class="toast hidden" role="status"></div>
+    <dialog id="app-dialog" class="app-dialog" aria-labelledby="dialog-title">
+      <form id="dialog-form" method="dialog">
+        <header class="dialog-head">
+          <strong id="dialog-title"></strong>
+          <button id="dialog-close" class="dialog-close" type="button" aria-label="Close dialog">×</button>
+        </header>
+        <div id="dialog-body" class="dialog-body"></div>
+        <footer class="dialog-actions">
+          <button id="dialog-cancel" type="button">Cancel</button>
+          <button id="dialog-confirm" class="primary" type="submit">Save</button>
+        </footer>
+      </form>
+    </dialog>
   </div>
 </body>
 </html>
