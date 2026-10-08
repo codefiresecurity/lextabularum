@@ -33,3 +33,14 @@ class GitLabClient:
         )
         response.raise_for_status()
         return response.json()
+
+    def find_issue(self, marker: str) -> dict | None:
+        response = httpx.get(
+            f"{self.base_url}/api/v4/projects/{self.project_id}/issues",
+            headers=self.headers,
+            params={"search": marker, "in": "title", "scope": "all", "per_page": 20},
+            verify=self.verify_ssl,
+            timeout=30,
+        )
+        response.raise_for_status()
+        return next((issue for issue in response.json() if marker in issue.get("title", "")), None)

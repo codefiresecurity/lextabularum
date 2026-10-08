@@ -1,0 +1,21 @@
+[Unit]
+Description=Lex Tabularum integration worker
+After=network.target mariadb.service
+
+[Service]
+Type=simple
+User=lextabularum
+Group=lextabularum
+WorkingDirectory=/opt/lextabularum
+EnvironmentFile=/opt/lextabularum/.env
+ExecStart=/opt/lextabularum/.venv/bin/python -m api.app.worker --interval 15
+Restart=on-failure
+RestartSec=3
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/lextabularum/storage/evidence
+
+[Install]
+WantedBy=multi-user.target

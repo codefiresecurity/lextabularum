@@ -2,7 +2,8 @@ import argparse
 
 from sqlalchemy import select
 
-from .db import Base, SessionLocal, engine
+from .db import SessionLocal
+from .migrate import upgrade_database
 from .models import User
 from .security import hash_password
 
@@ -15,7 +16,7 @@ def main():
     args = parser.parse_args()
     if len(args.password) < 10:
         parser.error("password must contain at least 10 characters")
-    Base.metadata.create_all(engine)
+    upgrade_database()
     with SessionLocal() as db:
         if db.scalar(select(User).where(User.username == args.username.lower())):
             parser.error("user already exists")

@@ -26,6 +26,7 @@ header('Referrer-Policy: same-origin');
         <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
         <p id="login-error" class="error hidden" role="alert"></p>
         <button class="primary" type="submit">Sign in</button>
+        <a id="gitlab-login" class="sso-button hidden" href="/api/auth/gitlab/start">Sign in with GitLab</a>
       </form>
     </main>
   </div>
@@ -40,6 +41,7 @@ header('Referrer-Policy: same-origin');
       <div class="topbar-right">
         <div class="system-health"><span class="status-dot"></span><span>System online</span></div>
         <div class="user-block"><span>USER</span><strong id="current-user"></strong></div>
+        <a href="#/account" class="utility-button" id="notification-button">INBOX <span id="notification-count">0</span></a>
         <button id="logout-button" class="utility-button">LOG OUT</button>
       </div>
     </header>
@@ -58,14 +60,16 @@ header('Referrer-Policy: same-origin');
           <p class="nav-section">PROJECT OPERATIONS</p>
           <a href="#/dashboard" data-route="dashboard"><span>▦</span> Overview</a>
           <a href="#/cases" data-route="cases"><span>≡</span> Test library</a>
+          <a href="#/requirements" data-route="requirements"><span>◇</span> Requirements</a>
           <a href="#/runs" data-route="runs"><span>▶</span> Test runs</a>
           <a href="#/reports" data-route="reports"><span>▤</span> Reports</a>
           <p class="nav-section">CONFIGURATION</p>
           <a href="#/import" data-route="import"><span>⇧</span> Import</a>
           <a href="#/team" data-route="team"><span>◎</span> Project team</a>
+          <a href="#/settings" data-route="settings"><span>⚒</span> Project settings</a>
           <a href="#/admin" data-route="admin" id="admin-nav"><span>⚙</span> Administration</a>
         </nav>
-        <div class="sidebar-foot"><span class="status-dot"></span> API CONNECTED<br><small>BUILD 0.1.0</small></div>
+        <div class="sidebar-foot"><span class="status-dot"></span> API CONNECTED<br><small>BUILD 0.2.0</small></div>
       </aside>
       <main id="content" class="content" tabindex="-1"></main>
     </div>

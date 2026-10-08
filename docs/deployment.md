@@ -22,20 +22,31 @@ Create a virtual environment, install dependencies, and create `.env` from `.env
 
 The evidence directory must be writable by the API service account and must not be inside the Nginx document root. Only the authenticated evidence API route should serve its files.
 
-Initialize the schema and first administrator:
+Upgrade the schema, then create the first administrator:
 
 ```bash
+.venv/bin/python -m api.app.migrate
 .venv/bin/python -m api.app.bootstrap \
   --username admin \
   --display-name "System Administrator" \
   --password 'a-long-one-time-password'
 ```
 
+`api.app.migrate` detects installations originally created before Alembic, stamps their existing baseline schema, and applies later migrations. Back up MariaDB and evidence storage before every upgrade. Follow the exact upgrade and rollback sequence in [operations.md](operations.md).
+
 Copy and customize the example units and Nginx configuration from `deploy/`. Set TLS up before setting `SESSION_COOKIE_SECURE=true`. In production that setting must remain true.
+
+Reload systemd and start both services:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now lextabularum-api.service lextabularum-worker.service
+curl --fail http://127.0.0.1:8000/api/health
+```
 
 ## 3. Runtime
 
-The API listens only on loopback. Nginx serves `web/` through PHP-FPM and proxies `/api/` to Uvicorn. The browser therefore sees a single origin and never receives the GitLab token.
+The API listens only on loopback. Nginx serves `web/` through PHP-FPM and proxies `/api/` to Uvicorn. The browser therefore sees a single origin and never receives the GitLab token. Enable both `lextabularum-api.service` and `lextabularum-worker.service`; the worker retries durable GitLab issue jobs after provider outages.
 
 After deployment:
 
@@ -49,3 +60,7 @@ After deployment:
 ## Operations
 
 Back up MariaDB and the evidence directory together. Audit events and run snapshots live in MariaDB; screenshots remain in evidence storage even after they are copied to GitLab. Treat application logs as sensitive because integration errors may include internal hostnames.
+
+System administrators can permanently delete a project from **Administration → Projects**. The operation removes the project's cases and revisions, test runs and results, memberships, local evidence files, encrypted GitLab configuration, and project-scoped audit events. It retains a minimal global deletion audit event and does not delete issues already created in GitLab.
+
+`EVIDENCE_RETENTION_DAYS` controls how long submitted local evidence files are retained. The worker purges expired files while retaining their metadata and GitLab issue history. Staged evidence that has not been submitted is not purged automatically.

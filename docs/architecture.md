@@ -35,7 +35,10 @@ PHP intentionally contains no domain or database logic. It supplies the hardened
 - `test_cases` represents the stable project-scoped ID, such as `DF-001`.
 - `test_case_versions` contains an immutable snapshot of the title, module, priority, lifecycle, steps, and expected result. Re-importing changed content increments the revision.
 - `run_cases` pins the exact case version in use when a run is created. Later imports cannot rewrite prior execution instructions.
-- A failed result requires non-empty notes and at least one image. The API uploads evidence to GitLab and creates the issue before committing the failed state.
+- A failed result requires non-empty notes and at least one image.
+- Terminal results create immutable numbered execution attempts. Retesting resets only the working run case; prior results, notes, evidence, and GitLab links remain in history.
+- Failed attempts commit before external delivery and create a durable outbox row. The API tries immediate delivery while the worker retries transient failures with an idempotency marker.
+- A tester may remove mistakenly uploaded evidence before submitting a failed result. Once GitLab issue creation succeeds, evidence removal is blocked locally because the attachment is already embedded in GitLab.
 - GitLab access tokens are encrypted at rest using a key derived from `APP_SECRET`.
 - Authentication uses database sessions stored as SHA-256 token digests. Passwords use scrypt with a unique salt.
 - Mutating browser requests require the session's CSRF token.

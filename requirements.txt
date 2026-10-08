@@ -8,3 +8,4 @@ httpx>=0.28,<0.29
 cryptography>=44,<47
 pytest>=8,<10
 anyio>=4.8,<4.9
+alembic>=1.14,<2

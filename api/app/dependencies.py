@@ -22,6 +22,10 @@ async def current_session(
         expires = expires.replace(tzinfo=timezone.utc)
     if not session or expires <= datetime.now(timezone.utc) or not session.user.active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session expired")
+    if session.user.must_change_password and request.url.path not in {
+        "/api/auth/me", "/api/auth/change-password", "/api/auth/logout",
+    }:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Password change required")
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         csrf = request.headers.get("X-CSRF-Token")
         if not csrf or not secrets_equal(csrf, session.csrf_token):
