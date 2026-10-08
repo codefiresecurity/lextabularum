@@ -2,6 +2,10 @@ const state = { user: null, csrf: null, projects: [], projectId: null, users: []
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
+function uiIcon(name, tone = 'blue', extraClass = '') {
+  return `<svg class="ui-icon icon-${tone} ${extraClass}" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
+}
+
 function escapeHtml(value = '') {
   return String(value).replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
 }
@@ -29,6 +33,22 @@ function toast(message, error = false) {
   toast.timer = setTimeout(() => node.classList.add('hidden'), 4500);
 }
 
+function decorateFields(root = document) {
+  $$('label:not(.project-picker):not(.has-field-icon)', root).forEach(label => {
+    const control = $('input, select, textarea', label);
+    if (!control || ['checkbox', 'radio'].includes(control.type)) return;
+    let icon = 'field'; let tone = 'teal';
+    if (control.type === 'password') { icon = 'lock'; tone = 'red'; }
+    else if (control.type === 'date') { icon = 'calendar'; tone = 'green'; }
+    else if (control.type === 'search') { icon = 'search'; tone = 'amber'; }
+    else if (control.type === 'file') { icon = 'import'; tone = 'blue'; }
+    else if (control.tagName === 'SELECT') { icon = 'list'; tone = 'blue'; }
+    else if (control.tagName === 'TEXTAREA') { icon = 'cases'; tone = 'purple'; }
+    label.classList.add('has-field-icon');
+    label.insertAdjacentHTML('afterbegin', uiIcon(icon, tone, 'field-icon'));
+  });
+}
+
 function modalField(field) {
   if (field.type === 'checkboxes') {
     return `<fieldset class="modal-checks"><legend>${escapeHtml(field.label)}</legend>${field.help ? `<p class="field-help">${escapeHtml(field.help)}</p>` : ''}<div class="check-list">${field.options.map(option => `<label><input type="checkbox" name="${escapeHtml(field.name)}" value="${escapeHtml(option.value)}" ${option.checked ? 'checked' : ''}><span><strong>${escapeHtml(option.label)}</strong>${option.description ? `<small>${escapeHtml(option.description)}</small>` : ''}</span></label>`).join('') || '<p class="muted">No options are available.</p>'}</div></fieldset>`;
@@ -45,6 +65,7 @@ function openModal({title, message = '', fields = [], confirmLabel = 'Save', dan
   const form = $('#dialog-form');
   $('#dialog-title').textContent = title;
   $('#dialog-body').innerHTML = `${message ? `<p class="dialog-message">${escapeHtml(message)}</p>` : ''}${fields.map(modalField).join('')}`;
+  decorateFields($('#dialog-body'));
   const confirmButton = $('#dialog-confirm');
   confirmButton.textContent = confirmLabel;
   confirmButton.className = danger ? 'danger' : 'primary';
@@ -123,7 +144,16 @@ function projectRequired() {
 }
 
 function pageHead(title, subtitle = '', actions = '') {
-  return `<header class="page-head"><div><p class="eyebrow">LEX TABULARUM / OPERATIONS</p><h1>${escapeHtml(title)}</h1><p>${escapeHtml(subtitle)}</p></div><div class="actions">${actions}</div></header>`;
+  const known = {
+    'Operations dashboard':['dashboard','blue'], 'Execution reports':['reports','amber'],
+    'Test library':['cases','teal'], 'Requirements':['requirements','purple'],
+    'Import test plan':['import','blue'], 'Test runs':['runs','green'],
+    'Project team':['team','green'], 'Project settings':['settings','amber'],
+    'My account':['account','blue'], 'Administration':['admin','red'],
+    'No project selected':['workspace','amber'], 'Unable to load':['admin','red'],
+  };
+  const [icon, tone] = known[title] || ['runs','green'];
+  return `<header class="page-head"><div class="page-title-block">${uiIcon(icon, tone, 'page-icon')}<div><p class="eyebrow">LEX TABULARUM / OPERATIONS</p><h1>${escapeHtml(title)}</h1><p>${escapeHtml(subtitle)}</p></div></div><div class="actions">${actions}</div></header>`;
 }
 
 function activeNav(routeName) {
@@ -142,6 +172,7 @@ function evidenceItem(file) {
 
 function setContent(html, routeName) {
   $('#content').innerHTML = html;
+  decorateFields($('#content'));
   activeNav(routeName);
   $('#content').focus({preventScroll: true});
 }
@@ -560,6 +591,7 @@ $('#menu-toggle').onclick = () => $('#sidebar').classList.toggle('open');
 window.addEventListener('hashchange', route);
 
 (async function boot() {
+  decorateFields(document);
   try { const providers = await api('/auth/providers'); $('#gitlab-login').classList.toggle('hidden', !providers.gitlab); } catch (_) {}
   try { const data = await api('/auth/me'); state.user = data.user; state.csrf = data.csrf_token; await showApp(); }
   catch (_) { showLogin(); }
