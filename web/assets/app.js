@@ -10,6 +10,15 @@ function escapeHtml(value = '') {
   return String(value).replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
 }
 
+// Accept the CSV vocabulary and the historic P0–P3 priorities without changing stored values.
+function priorityBadge(value) {
+  const raw = String(value ?? '').trim();
+  const key = raw.toLowerCase();
+  const level = ({critical:'critical',p0:'critical',high:'high',p1:'high',medium:'medium',normal:'medium',p2:'medium',low:'low',p3:'low'})[key] || 'unknown';
+  const label = raw || '—';
+  return `<span class="badge priority-badge priority-${level}" title="Priority: ${escapeHtml(label)}">${escapeHtml(label)}</span>`;
+}
+
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
   if (state.csrf && !['GET', 'HEAD'].includes((options.method || 'GET').toUpperCase())) headers.set('X-CSRF-Token', state.csrf);
@@ -31,28 +40,6 @@ function toast(message, error = false) {
   node.classList.remove('hidden');
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => node.classList.add('hidden'), 4500);
-}
-
-function priorityBadge(value) {
-  const raw = String(value ?? '').trim();
-  const key = raw.toLowerCase();
-
-  const level = ({
-    critical: 'critical',
-    p0: 'critical',
-    high: 'high',
-    p1: 'high',
-    medium: 'medium',
-    normal: 'medium',
-    p2: 'medium',
-    low: 'low',
-    p3: 'low'
-  })[key] || 'unknown';
-
-  const label = raw || '—';
-
-  return `<span class="badge priority-badge priority-${level}"
-    title="Priority: ${escapeHtml(label)}">${escapeHtml(label)}</span>`;
 }
 
 function decorateFields(root = document) {
@@ -246,7 +233,7 @@ async function renderReports() {
     if (!report) return;
     const search = $('#report-controls').search.value.trim().toLowerCase();
     const rows = report.rows.filter(row => !search || [row.case_id, row.title, row.section, row.assignee, row.run_name, row.notes].some(value => String(value || '').toLowerCase().includes(search)));
-    $('#report-results').innerHTML = rows.length ? `<table class="report-table"><thead><tr><th>Run</th><th>Case</th><th>Title / module</th><th>Priority</th><th>Assignee</th><th>Result</th><th>Completed</th><th>Notes / issue</th></tr></thead><tbody>${rows.map(row => `<tr><td>${escapeHtml(row.run_name)}</td><td class="mono"><strong>${escapeHtml(row.case_id)}</strong></td><td>${escapeHtml(row.title)}<br><small class="muted">${escapeHtml(row.section)}</small></td><td>${escapeHtml(row.priority || '—')}</td><td>${escapeHtml(row.assignee || 'Unassigned')}</td><td><span class="badge ${row.state}">${escapeHtml(row.state.replaceAll('_',' '))}</span></td><td>${formatDate(row.completed_at)}</td><td class="notes-cell" title="${escapeHtml(row.notes || '')}">${escapeHtml(row.notes || '—')}${row.gitlab_issue_url ? `<br><a href="${escapeHtml(row.gitlab_issue_url)}" target="_blank" rel="noopener">GitLab issue ↗</a>` : ''}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No executions match these filters.</div>';
+    $('#report-results').innerHTML = rows.length ? `<table class="report-table"><thead><tr><th>Run</th><th>Case</th><th>Title / module</th><th>Priority</th><th>Assignee</th><th>Result</th><th>Completed</th><th>Notes / issue</th></tr></thead><tbody>${rows.map(row => `<tr><td>${escapeHtml(row.run_name)}</td><td class="mono"><strong>${escapeHtml(row.case_id)}</strong></td><td>${escapeHtml(row.title)}<br><small class="muted">${escapeHtml(row.section)}</small></td><td>${priorityBadge(row.priority)}</td><td>${escapeHtml(row.assignee || 'Unassigned')}</td><td><span class="badge ${row.state}">${escapeHtml(row.state.replaceAll('_',' '))}</span></td><td>${formatDate(row.completed_at)}</td><td class="notes-cell" title="${escapeHtml(row.notes || '')}">${escapeHtml(row.notes || '—')}${row.gitlab_issue_url ? `<br><a href="${escapeHtml(row.gitlab_issue_url)}" target="_blank" rel="noopener">GitLab issue ↗</a>` : ''}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No executions match these filters.</div>';
   };
   const loadReport = async () => {
     const form = $('#report-controls'); const params = new URLSearchParams();
@@ -277,9 +264,9 @@ async function renderCases(filters = {}) {
   if (!projectRequired()) return;
   const params = new URLSearchParams(Object.entries(filters).filter(([,value]) => value));
   const cases = await api(`/projects/${state.projectId}/cases?${params}`);
-  let rows = cases.map(item => `<tr><td class="mono"><strong>${escapeHtml(item.external_id)}</strong></td><td>${escapeHtml(item.title)}</td><td>${escapeHtml(item.section)}</td><td><span class="badge">${escapeHtml(item.priority || '—')}</span></td><td>${item.tags.map(tag => `<span class="badge">${escapeHtml(tag)}</span>`).join(' ') || '—'}</td><td>r${item.version}</td><td><button class="case-history" data-case-id="${item.id}">History</button>${canManage() ? `<button class="edit-case" data-case-id="${item.id}">Edit</button><button class="case-tags" data-case-id="${item.id}" data-tags="${escapeHtml(item.tags.join(','))}">Tags</button><button class="case-requirements" data-case-id="${item.id}">Requirements</button><button class="deactivate-case danger" data-case-id="${item.id}" data-case-name="${escapeHtml(item.external_id)}">Deactivate</button>` : ''}</td></tr>`).join('');
-  setContent(pageHead('Test library', `${cases.length} reusable cases in the selected project.`, canManage() ? '<a href="#/import"><button>Import Markdown</button></a>' : '') +
-    `<form id="case-filters" class="report-controls"><label>Search<input name="q" value="${escapeHtml(filters.q || '')}" placeholder="ID, title, module"></label><label>Priority<select name="priority"><option value="">All</option>${['P0','P1','P2','P3'].map(value => `<option ${filters.priority === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Tag<input name="tag" value="${escapeHtml(filters.tag || '')}"></label><button>Filter</button></form><div id="case-history-panel"></div>` +
+  let rows = cases.map(item => `<tr><td class="mono"><strong>${escapeHtml(item.external_id)}</strong></td><td>${escapeHtml(item.title)}</td><td>${escapeHtml(item.section)}</td><td>${priorityBadge(item.priority)}</td><td>${item.tags.map(tag => `<span class="badge">${escapeHtml(tag)}</span>`).join(' ') || '—'}</td><td>r${item.version}</td><td><button class="case-history" data-case-id="${item.id}">History</button>${canManage() ? `<button class="edit-case" data-case-id="${item.id}">Edit</button><button class="case-tags" data-case-id="${item.id}" data-tags="${escapeHtml(item.tags.join(','))}">Tags</button><button class="case-requirements" data-case-id="${item.id}">Requirements</button><button class="deactivate-case danger" data-case-id="${item.id}" data-case-name="${escapeHtml(item.external_id)}">Deactivate</button>` : ''}</td></tr>`).join('');
+  setContent(pageHead('Test library', `${cases.length} reusable cases in the selected project.`, canManage() ? '<a href="#/import"><button>Import test plan</button></a>' : '') +
+    `<form id="case-filters" class="report-controls"><label>Search<input name="q" value="${escapeHtml(filters.q || '')}" placeholder="ID, title, module"></label><label>Priority<select name="priority"><option value="">All</option>${['critical','high','medium','low','P0','P1','P2','P3'].map(value => `<option value="${value}" ${filters.priority === value ? 'selected' : ''}>${escapeHtml(value)}</option>`).join('')}</select></label><label>Tag<input name="tag" value="${escapeHtml(filters.tag || '')}"></label><button>Filter</button></form><div id="case-history-panel"></div>` +
     (cases.length ? `<div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Module</th><th>Priority</th><th>Tags</th><th>Revision</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="empty">No matching cases.</div>'), 'cases');
   $('#case-filters').onsubmit = event => { event.preventDefault(); renderCases({q:event.target.q.value, priority:event.target.priority.value, tag:event.target.tag.value}); };
   $$('.case-history').forEach(button => button.onclick = async () => {
@@ -331,17 +318,17 @@ async function renderImport() {
   if (!projectRequired()) return;
   if (!canManage()) { location.hash = '#/cases'; return; }
   setContent(pageHead('Import test plan', 'Existing IDs are updated as new revisions; unchanged cases are left alone.') + `
-    <section class="grid"><div class="panel span-8"><h2>Markdown source</h2>
-      <form id="import-form" class="stack"><label>Test plan file (.md)<input name="file" type="file" accept=".md,.markdown,text/markdown" required></label>
-      <p class="muted">Each case requires an ID/title heading, numbered steps, and an <span class="mono">Expected:</span> line.</p>
+    <section class="grid"><div class="panel span-8"><h2>Import source</h2>
+      <form id="import-form" class="stack"><label>Test plan file (.csv, .md, .markdown)<input name="file" type="file" accept=".csv,.md,.markdown,text/csv,text/markdown" required></label>
+      <p class="muted">Supports canonical CSV (Case ID, Title, Component, Priority, Steps, Expected Results) or Markdown headings with numbered steps and an <span class="mono">Expected:</span> line.</p>
       <div class="actions"><button type="submit">Preview changes</button><button id="confirm-import" class="primary hidden" type="button">Apply import</button></div></form><div id="import-preview"></div></div>
-      <aside class="panel span-4"><h2>Recognized pattern</h2><pre class="mono">### PR-001 — Login (\`P0\`)\n\n1. Open the form.\n2. Sign in.\n\nExpected: Dashboard opens.</pre></aside></section>`, 'import');
+      <aside class="panel span-4"><h2>Recognized Markdown pattern</h2><pre class="mono">### PR-001 — Login (\`P0\`)\n\n1. Open the form.\n2. Sign in.\n\nExpected: Dashboard opens.</pre></aside></section>`, 'import');
   $('#import-form').addEventListener('submit', async event => {
     event.preventDefault();
     const button = $('button[type="submit"]', event.target); button.disabled = true; button.textContent = 'Checking…';
     try {
       const result = await api(`/projects/${state.projectId}/imports/preview`, {method: 'POST', body: new FormData(event.target)});
-      $('#import-preview').innerHTML = `<h3>Proposed changes</h3><p><span class="badge">${result.create} new</span> <span class="badge in_progress">${result.update} changed</span> <span class="badge passed">${result.unchanged} unchanged</span></p><div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Module</th><th>Action</th></tr></thead><tbody>${result.rows.map(row => `<tr><td class="mono">${escapeHtml(row.external_id)}</td><td>${escapeHtml(row.title)}</td><td>${escapeHtml(row.section)}</td><td><span class="badge ${row.action === 'update' ? 'in_progress' : row.action === 'unchanged' ? 'passed' : ''}">${row.action}</span></td></tr>`).join('')}</tbody></table></div>${result.omitted.length ? `<p class="error"><strong>${result.omitted.length} existing cases are absent from this file.</strong> They will remain active and will not be deleted.</p>` : ''}`;
+      $('#import-preview').innerHTML = `<h3>Proposed changes</h3><p><span class="badge">${result.create} new</span> <span class="badge in_progress">${result.update} changed</span> <span class="badge passed">${result.unchanged} unchanged</span></p><div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Module</th><th>Priority</th><th>Action</th></tr></thead><tbody>${result.rows.map(row => `<tr><td class="mono">${escapeHtml(row.external_id)}</td><td>${escapeHtml(row.title)}</td><td>${escapeHtml(row.section)}</td><td>${priorityBadge(row.priority)}</td><td><span class="badge ${row.action === 'update' ? 'in_progress' : row.action === 'unchanged' ? 'passed' : ''}">${row.action}</span></td></tr>`).join('')}</tbody></table></div>${result.omitted.length ? `<p class="error"><strong>${result.omitted.length} existing cases are absent from this file.</strong> They will remain active and will not be deleted.</p>` : ''}`;
       $('#confirm-import').classList.remove('hidden');
     } catch (error) { toast(error.message, true); $('#confirm-import').classList.add('hidden'); }
     finally { button.disabled = false; button.textContent = 'Preview changes'; }
@@ -400,7 +387,7 @@ async function renderRun(runId) {
   const terminalStates = ['passed','failed','blocked','skipped'];
   const cases = run.cases.map(item => `<article class="case-card" data-run-case="${item.id}" data-lock-version="${item.lock_version}">
     <div class="case-summary ${canManage() ? 'with-select' : ''}" role="button" tabindex="0" aria-expanded="false">${canManage() ? `<input class="bulk-case" type="checkbox" aria-label="Select ${escapeHtml(item.external_id)}">` : ''}<strong class="mono">${escapeHtml(item.external_id)}</strong><span>${escapeHtml(item.title)}</span><span class="case-assignee">${escapeHtml(item.assignee || 'Unassigned')}</span><span class="badge ${item.state}">${escapeHtml(item.state.replace('_',' '))}</span></div>
-    <div class="case-detail hidden"><ol>${item.steps.map(step => `<li>${escapeHtml(step)}</li>`).join('')}</ol><p class="expected"><strong>Expected:</strong> ${escapeHtml(item.expected)}</p>
+    <div class="case-detail hidden">${item.priority ? `<p><strong>Priority:</strong> ${priorityBadge(item.priority)}</p>` : ''}<ol>${item.steps.map(step => `<li>${escapeHtml(step)}</li>`).join('')}</ol><p class="expected"><strong>Expected:</strong> ${escapeHtml(item.expected)}</p>
       <p class="issue-slot">${item.gitlab_issue_url ? `<a href="${escapeHtml(item.gitlab_issue_url)}" target="_blank" rel="noopener">Open GitLab issue ↗</a>` : ''}</p>
       ${item.attempts.length ? `<div class="attempt-history"><h3>Execution history</h3><table><thead><tr><th>Attempt</th><th>Result</th><th>Tester</th><th>Completed</th><th>GitLab</th></tr></thead><tbody>${item.attempts.map(attempt => `<tr><td>#${attempt.number}</td><td><span class="badge ${attempt.state}">${escapeHtml(attempt.state)}</span></td><td>${escapeHtml(attempt.executor)}</td><td>${formatDate(attempt.completed_at)}</td><td>${attempt.gitlab_issue_url ? `<a href="${escapeHtml(attempt.gitlab_issue_url)}" target="_blank" rel="noopener">Issue ↗</a>` : escapeHtml(attempt.gitlab_status)}</td></tr>`).join('')}</tbody></table></div>` : ''}
       ${canManage() ? `<form class="assignment-form form-grid"><label>Assignee<select name="assigned_to"><option value="">Unassigned</option>${members.filter(member => member.role !== 'viewer').map(member => `<option value="${member.id}" ${member.id === item.assigned_to ? 'selected' : ''}>${escapeHtml(member.display_name)}</option>`).join('')}</select></label><div><button type="submit">Update assignment</button></div></form>` : ''}
