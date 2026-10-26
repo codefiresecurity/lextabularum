@@ -1,3 +1,5 @@
+import csv
+import io
 import hashlib
 import json
 import re
@@ -91,6 +93,83 @@ def parse_markdown(text: str) -> list[ParsedCase]:
     if duplicates:
         raise ValueError("Duplicate case IDs: " + ", ".join(duplicates))
     return cases
+
+
+
+CSV_REQUIRED_COLUMNS = {
+    "Case ID", "Title", "Component", "Priority", "Status", "Steps", "Expected Results"
+}
+CSV_OPTIONAL_COLUMNS = {"Requirements", "Task", "Preconditions", "Revision"}
+
+
+def parse_csv(text: str) -> list[ParsedCase]:
+    """Parse FolioArc canonical case CSV into the existing versioned case model.
+
+    Retains each step's inline `=> expected` clause verbatim. The current database
+    has no dedicated columns for task, requirement references, preconditions, or
+    source revision, so these are not silently reinterpreted as test steps.
+    """
+    reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff"), newline=""), strict=True)
+    if not reader.fieldnames:
+        raise ValueError("CSV must contain a header row")
+    headers = [name.strip().lstrip("\ufeff") for name in reader.fieldnames]
+    if len(set(headers)) != len(headers):
+        raise ValueError("CSV contains duplicate column headers")
+    missing = sorted(CSV_REQUIRED_COLUMNS - set(headers))
+    if missing:
+        raise ValueError("CSV missing required columns: " + ", ".join(missing))
+    if None in reader.fieldnames:
+        raise ValueError("CSV contains a blank column header")
+    cases: list[ParsedCase] = []
+    seen: set[str] = set()
+    for row_number, row in enumerate(reader, start=2):
+        if None in row:
+            raise ValueError(f"CSV row {row_number} has more values than headers")
+        values = {key.strip(): (value or "").strip() for key, value in row.items()}
+        if not any(values.values()):
+            continue
+        case_id = values["Case ID"]
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*-\d+", case_id):
+            raise ValueError(f"CSV row {row_number}: invalid Case ID {case_id!r}")
+        if case_id in seen:
+            raise ValueError(f"CSV row {row_number}: duplicate Case ID {case_id}")
+        seen.add(case_id)
+        for field in ("Title", "Component", "Steps", "Expected Results"):
+            if not values[field]:
+                raise ValueError(f"CSV row {row_number} ({case_id}): {field} is required")
+        steps: list[str] = []
+        for line in values["Steps"].splitlines():
+            match = STEP.match(line)
+            if match:
+                steps.append(match.group(1).strip())
+            elif line.strip():
+                if not steps:
+                    raise ValueError(f"CSV row {row_number} ({case_id}): Steps must start with a numbered action")
+                steps[-1] += "\n" + line.strip()
+        if not steps:
+            raise ValueError(f"CSV row {row_number} ({case_id}): no numbered steps found")
+        cases.append(ParsedCase(
+            external_id=case_id, title=values["Title"], section=values["Component"],
+            priority=values["Priority"] or None, lifecycle=values["Status"] or None,
+            steps=steps, expected=values["Expected Results"],
+        ))
+    if not cases:
+        raise ValueError("CSV contains no test cases")
+    return cases
+
+
+def parse_upload(filename: str, content: bytes) -> list[ParsedCase]:
+    suffix = filename.lower().rsplit(".", 1)[-1]
+    if suffix not in {"md", "markdown", "csv"}:
+        raise ValueError("Supported import formats are .md, .markdown and .csv")
+    try:
+        decoded = content.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError("Import must be UTF-8 encoded") from exc
+    try:
+        return parse_csv(decoded) if suffix == "csv" else parse_markdown(decoded)
+    except csv.Error as exc:
+        raise ValueError(f"Malformed CSV: {exc}") from exc
 
 
 def import_cases(db: Session, project_id: int, parsed: list[ParsedCase], source_file: str) -> dict:

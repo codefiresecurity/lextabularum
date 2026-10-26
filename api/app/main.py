@@ -20,7 +20,7 @@ from .config import settings
 from .db import Base, SessionLocal, engine, get_db
 from .dependencies import current_session, current_user, membership, require_admin, require_project
 from .gitlab import GitLabClient
-from .importer import import_cases, parse_markdown
+from .importer import import_cases, parse_upload
 from .models import (
     AuditEvent, CaseRequirement, Evidence, ExecutionAttempt, GitLabOutbox, Notification, Project,
     ProjectMember, ProjectRole, Requirement, RunCase, RunCaseComment, RunState, RunTemplate, Session,
@@ -611,15 +611,15 @@ async def deactivate_case(project_id: int, case_id: int, active: bool = False,
 
 
 @app.post("/api/projects/{project_id}/imports", status_code=201)
-async def import_markdown(project_id: int, file: UploadFile = File(...), user: User = Depends(current_user), db: DBSession = Depends(get_db)):
+async def import_test_cases(project_id: int, file: UploadFile = File(...), user: User = Depends(current_user), db: DBSession = Depends(get_db)):
     require_project(project_id, user, db, {ProjectRole.manager})
-    if not file.filename or not file.filename.lower().endswith((".md", ".markdown")):
-        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "A Markdown file is required")
+    if not file.filename or not file.filename.lower().endswith((".md", ".markdown", ".csv")):
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "A Markdown or CSV file is required")
     content = await file.read(2 * 1024 * 1024 + 1)
     if len(content) > 2 * 1024 * 1024:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Markdown file exceeds 2 MB")
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Import file exceeds 2 MB")
     try:
-        parsed = parse_markdown(content.decode("utf-8"))
+        parsed = parse_upload(file.filename or "", content)
         result = import_cases(db, project_id, parsed, Path(file.filename).name)
     except (UnicodeDecodeError, ValueError) as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
@@ -631,11 +631,13 @@ async def import_markdown(project_id: int, file: UploadFile = File(...), user: U
 @app.post("/api/projects/{project_id}/imports/preview")
 async def preview_import(project_id: int, file: UploadFile = File(...), user: User = Depends(current_user), db: DBSession = Depends(get_db)):
     require_project(project_id, user, db, {ProjectRole.manager})
+    if not file.filename or not file.filename.lower().endswith((".md", ".markdown", ".csv")):
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "A Markdown or CSV file is required")
     content = await file.read(2 * 1024 * 1024 + 1)
     if len(content) > 2 * 1024 * 1024:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Markdown file exceeds 2 MB")
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Import file exceeds 2 MB")
     try:
-        parsed = parse_markdown(content.decode("utf-8"))
+        parsed = parse_upload(file.filename or "", content)
     except (UnicodeDecodeError, ValueError) as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     existing = {case.external_id: case for case in db.scalars(select(TestCase).where(TestCase.project_id == project_id)).all()}
