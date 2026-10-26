@@ -107,6 +107,15 @@ tbody tr:nth-child(even) { background: #f5f8fa; }
 tbody tr:hover { background: #e8f1f7; }
 .mono { font-family: ui-monospace, "IBM Plex Mono", monospace; }
 .badge { display: inline-block; padding: .12rem .3rem; border: 1px solid #a6afab; background: #eef0ec; font: 700 .61rem ui-monospace, monospace; text-transform: uppercase; }
+/* Consistent test priority indicators for canonical CSV and P0-P3 case plans. */
+.badge.priority-badge { display: inline-flex; align-items: center; gap: .3rem; min-width: 61px; justify-content: center; font-weight: 800; letter-spacing: .02em; }
+.badge.priority-badge::before { content: ""; width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: currentColor; }
+.badge.priority-critical { color: #862018; background: #f9dcda; border-color: #c96e65; }
+.badge.priority-high { color: #88400b; background: #ffe8cf; border-color: #d69a56; }
+.badge.priority-medium { color: #174f83; background: #dceafa; border-color: #83add2; }
+.badge.priority-low { color: #495c65; background: #e8edf0; border-color: #a0b0ba; }
+.badge.priority-unknown { color: #5d6570; background: #eef0f2; border-color: #b7bec6; }
+@media print { .badge.priority-badge { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
 .badge.passed { color: #185d37; background: #ddefe2; border-color: #83b594; }
 .badge.failed { color: #7e241d; background: #f5deda; border-color: #ce948d; }
 .badge.in_progress, .badge.blocked { color: #71450e; background: #f7e9cc; border-color: #d6ad6e; }

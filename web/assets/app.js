@@ -33,6 +33,28 @@ function toast(message, error = false) {
   toast.timer = setTimeout(() => node.classList.add('hidden'), 4500);
 }
 
+function priorityBadge(value) {
+  const raw = String(value ?? '').trim();
+  const key = raw.toLowerCase();
+
+  const level = ({
+    critical: 'critical',
+    p0: 'critical',
+    high: 'high',
+    p1: 'high',
+    medium: 'medium',
+    normal: 'medium',
+    p2: 'medium',
+    low: 'low',
+    p3: 'low'
+  })[key] || 'unknown';
+
+  const label = raw || '—';
+
+  return `<span class="badge priority-badge priority-${level}"
+    title="Priority: ${escapeHtml(label)}">${escapeHtml(label)}</span>`;
+}
+
 function decorateFields(root = document) {
   $$('label:not(.project-picker):not(.has-field-icon)', root).forEach(label => {
     const control = $('input, select, textarea', label);
